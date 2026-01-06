@@ -1,0 +1,449 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   Bloomberg Terminal Inspired Theme
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Terminal Colors */
+  --terminal-bg: #0a0a0a;
+  --terminal-panel: #121212;
+  --terminal-surface: #1a1a1a;
+  --terminal-border: #2a2a2a;
+  --terminal-muted: #3a3a3a;
+  
+  /* Data Colors */
+  --data-green: #00d26a;
+  --data-red: #ff3b3b;
+  --data-amber: #ffaa00;
+  --data-blue: #0088ff;
+  --data-cyan: #00bac7;
+  
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.4);
+}
+
+html {
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+body {
+  background: var(--terminal-bg);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar - Bloomberg style thin */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--terminal-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--terminal-muted);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Selection */
+::selection {
+  background: rgba(0, 186, 199, 0.3);
+  color: white;
+}
+
+/* ============================================================================
+   Terminal Components
+   ============================================================================ */
+
+/* Panel / Card */
+.card {
+  @apply bg-terminal-panel border border-terminal-border rounded-terminal p-4;
+  @apply shadow-terminal transition-all duration-200;
+}
+
+.card:hover {
+  @apply border-terminal-muted;
+}
+
+.card-header {
+  @apply text-xxs uppercase tracking-widest text-white/40 font-medium mb-3;
+  @apply border-b border-terminal-border pb-2;
+}
+
+/* Glass morphism - more subtle for terminal */
+.glass {
+  background: rgba(18, 18, 18, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--terminal-border);
+}
+
+/* Data Table */
+.data-table {
+  @apply w-full font-mono text-sm;
+}
+
+.data-table th {
+  @apply text-xxs uppercase tracking-wider text-white/40 text-left py-2 px-3;
+  @apply border-b border-terminal-border bg-terminal-surface;
+}
+
+.data-table td {
+  @apply py-2 px-3 border-b border-terminal-border/50;
+}
+
+.data-table tr:hover td {
+  @apply bg-white/[0.02];
+}
+
+/* ============================================================================
+   Data Indicators
+   ============================================================================ */
+
+.data-positive {
+  color: var(--data-green);
+}
+
+.data-negative {
+  color: var(--data-red);
+}
+
+.data-neutral {
+  color: var(--data-amber);
+}
+
+.data-info {
+  color: var(--data-blue);
+}
+
+.data-primary {
+  color: var(--data-cyan);
+}
+
+/* Confidence indicators */
+.confidence-high {
+  color: var(--data-green);
+}
+
+.confidence-medium {
+  color: var(--data-amber);
+}
+
+.confidence-low {
+  color: var(--data-red);
+}
+
+/* ============================================================================
+   Buttons
+   ============================================================================ */
+
+.btn-primary {
+  @apply bg-gradient-to-r from-data-cyan to-data-blue text-white font-medium;
+  @apply px-4 py-2 rounded-terminal text-sm;
+  @apply hover:shadow-glow-cyan transition-all duration-200;
+  @apply active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply bg-terminal-surface border border-terminal-border text-white/80;
+  @apply px-4 py-2 rounded-terminal text-sm font-medium;
+  @apply hover:bg-terminal-muted hover:border-white/20 transition-all duration-200;
+  @apply active:scale-[0.98];
+}
+
+.btn-ghost {
+  @apply text-white/60 px-3 py-1.5 rounded-terminal text-sm;
+  @apply hover:bg-white/5 hover:text-white transition-all duration-200;
+}
+
+/* ============================================================================
+   Inputs
+   ============================================================================ */
+
+.input {
+  @apply w-full bg-terminal-bg border border-terminal-border rounded-terminal;
+  @apply px-3 py-2 text-sm text-white placeholder-white/30;
+  @apply focus:outline-none focus:border-data-cyan focus:ring-1 focus:ring-data-cyan/50;
+  @apply transition-all duration-200 font-mono;
+}
+
+.input-label {
+  @apply text-xxs uppercase tracking-wider text-white/40 mb-1.5 block;
+}
+
+/* Select */
+select.input {
+  @apply appearance-none cursor-pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+/* ============================================================================
+   Status Badges
+   ============================================================================ */
+
+.badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xxs font-medium uppercase tracking-wider;
+}
+
+.badge-success {
+  @apply bg-data-green/20 text-data-green border border-data-green/30;
+}
+
+.badge-warning {
+  @apply bg-data-amber/20 text-data-amber border border-data-amber/30;
+}
+
+.badge-danger {
+  @apply bg-data-red/20 text-data-red border border-data-red/30;
+}
+
+.badge-info {
+  @apply bg-data-blue/20 text-data-blue border border-data-blue/30;
+}
+
+.badge-primary {
+  @apply bg-data-cyan/20 text-data-cyan border border-data-cyan/30;
+}
+
+/* ============================================================================
+   Live Indicators
+   ============================================================================ */
+
+.pulse-dot {
+  @apply w-2 h-2 rounded-full bg-data-green;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(0, 210, 106, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+    box-shadow: 0 0 0 4px rgba(0, 210, 106, 0);
+  }
+}
+
+.live-indicator {
+  @apply flex items-center gap-2 text-xxs uppercase tracking-wider;
+}
+
+.live-indicator::before {
+  content: '';
+  @apply w-1.5 h-1.5 rounded-full bg-data-green animate-pulse;
+}
+
+/* ============================================================================
+   Grid Background Pattern
+   ============================================================================ */
+
+.grid-bg {
+  background-image: 
+    linear-gradient(rgba(42, 42, 42, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(42, 42, 42, 0.15) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* ============================================================================
+   Charts
+   ============================================================================ */
+
+.recharts-cartesian-axis-tick-value {
+  fill: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.recharts-legend-item-text {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-size: 11px !important;
+}
+
+.recharts-tooltip-wrapper {
+  @apply font-mono;
+}
+
+/* ============================================================================
+   Terminal Header Bar
+   ============================================================================ */
+
+.terminal-header {
+  @apply flex items-center justify-between px-4 py-2;
+  @apply bg-terminal-surface border-b border-terminal-border;
+  @apply text-xxs uppercase tracking-widest;
+}
+
+.terminal-title {
+  @apply text-data-cyan font-semibold;
+}
+
+.terminal-timestamp {
+  @apply text-white/40 font-mono;
+}
+
+/* ============================================================================
+   Data Grid / Table
+   ============================================================================ */
+
+.data-grid {
+  @apply grid gap-px bg-terminal-border;
+}
+
+.data-grid-cell {
+  @apply bg-terminal-panel p-3;
+}
+
+.data-grid-header {
+  @apply text-xxs uppercase tracking-wider text-white/40;
+}
+
+.data-grid-value {
+  @apply text-lg font-mono font-semibold;
+}
+
+/* ============================================================================
+   Ticker / Marquee
+   ============================================================================ */
+
+.ticker-wrap {
+  @apply overflow-hidden whitespace-nowrap;
+  @apply bg-terminal-surface border-y border-terminal-border;
+}
+
+.ticker {
+  @apply inline-flex gap-8 py-2 animate-ticker;
+}
+
+.ticker-item {
+  @apply inline-flex items-center gap-2 text-sm font-mono;
+}
+
+/* ============================================================================
+   Monospace Data Display
+   ============================================================================ */
+
+.mono-value {
+  @apply font-mono tabular-nums;
+}
+
+.mono-label {
+  @apply text-xxs uppercase tracking-wider text-white/40;
+}
+
+/* Large number display */
+.big-number {
+  @apply text-3xl font-mono font-bold tracking-tight;
+}
+
+.big-number.positive {
+  @apply text-data-green;
+}
+
+.big-number.negative {
+  @apply text-data-red;
+}
+
+/* ============================================================================
+   Graph Node Styles
+   ============================================================================ */
+
+.graph-node-level1 {
+  fill: #6366f1;
+}
+
+.graph-node-level2 {
+  fill: #0088ff;
+}
+
+.graph-node-level3 {
+  fill: #00bac7;
+}
+
+/* ============================================================================
+   Shimmer Loading
+   ============================================================================ */
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ============================================================================
+   Sidebar Navigation
+   ============================================================================ */
+
+.nav-item {
+  @apply flex items-center gap-3 px-3 py-2 rounded-terminal;
+  @apply text-white/60 transition-all duration-200;
+}
+
+.nav-item:hover {
+  @apply bg-white/5 text-white;
+}
+
+.nav-item.active {
+  @apply bg-data-cyan/10 text-data-cyan border-l-2 border-data-cyan;
+}
+
+/* ============================================================================
+   Keyboard Shortcuts
+   ============================================================================ */
+
+.kbd {
+  @apply inline-flex items-center justify-center;
+  @apply px-1.5 py-0.5 rounded-sm text-xxs font-mono;
+  @apply bg-terminal-surface border border-terminal-border text-white/60;
+}
+
+/* ============================================================================
+   Bloomberg-style Panels
+   ============================================================================ */
+
+.panel {
+  @apply bg-terminal-panel border border-terminal-border;
+  @apply flex flex-col h-full;
+}
+
+.panel-header {
+  @apply flex items-center justify-between;
+  @apply px-3 py-2 bg-terminal-surface border-b border-terminal-border;
+}
+
+.panel-title {
+  @apply text-xs font-semibold uppercase tracking-wider text-data-cyan;
+}
+
+.panel-body {
+  @apply flex-1 overflow-auto p-3;
+}
+
+.panel-footer {
+  @apply px-3 py-2 bg-terminal-surface border-t border-terminal-border;
+  @apply text-xxs text-white/40;
+}

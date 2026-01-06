@@ -1,0 +1,171 @@
+# ============================================================================
+# Turing NexusFlow - Git Ignore
+# ============================================================================
+
+# ==== Python ====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==== Virtual Environments ====
+.venv/
+venv/
+ENV/
+env/
+.env.local
+.env.*.local
+
+# ==== IDE ====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ==== Cursor ====
+.cursor/
+.cursorignore
+
+# ==== Testing ====
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# ==== Type Checking ====
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# ==== Logs ====
+*.log
+logs/
+log/
+
+# ==== Database ====
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.json
+!data/.gitkeep
+
+# ==== Secrets & Environment ====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# ==== Node.js (Frontend) ====
+node_modules/
+.next/
+out/
+.nuxt/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.tsbuildinfo
+
+# ==== Docker ====
+docker-compose.override.yml
+.docker/
+
+# ==== OS Files ====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ==== Jupyter Notebooks ====
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ==== Package Managers ====
+.uv/
+uv.lock
+
+# ==== Build Artifacts ====
+*.whl
+*.tar.gz
+*.zip
+
+# ==== Cache ====
+.cache/
+*.cache
+.parcel-cache/
+.ruff_cache/
+
+# ==== Temporary Files ====
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+
+# ==== Neo4j ====
+neo4j_data/
+neo4j_logs/
+
+# ==== Milvus ====
+milvus_data/
+etcd_data/
+minio_data/
+
+# ==== Phoenix ====
+phoenix_data/
+
+# ==== Volume Data (Docker) ====
+volumes/
+
+# ==== Generated Files ====
+*.generated.*
+generated/
+
+# ==== Documentation Build ====
+docs/_build/
+site/
+
+# ==== Profiling ====
+*.prof
+*.lprof
+

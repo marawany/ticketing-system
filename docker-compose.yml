@@ -1,0 +1,219 @@
+version: '3.9'
+
+services:
+  # NexusFlow API Server
+  nexusflow-api:
+    build:
+      context: .
+      target: production
+    container_name: nexusflow-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=docker
+      - NEO4J_URI=bolt://neo4j:7687
+      - MILVUS_HOST=milvus-standalone
+      - PHOENIX_HOST=phoenix
+      - DATABASE_URL=postgresql+asyncpg://nexusflow:nexusflow123@postgres:5432/nexusflow
+    volumes:
+      - nexusflow_data:/app/data
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      milvus-standalone:
+        condition: service_healthy
+      phoenix:
+        condition: service_started
+    networks:
+      - nexusflow-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # NexusFlow MCP Server
+  nexusflow-mcp:
+    build:
+      context: .
+      target: production
+    container_name: nexusflow-mcp
+    command: ["python", "-m", "nexusflow.mcp.server"]
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=docker
+      - NEO4J_URI=bolt://neo4j:7687
+      - MILVUS_HOST=milvus-standalone
+    depends_on:
+      - nexusflow-api
+    networks:
+      - nexusflow-network
+    restart: unless-stopped
+
+  # Frontend
+  nexusflow-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nexusflow-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_MCP_URL=http://localhost:8001
+    depends_on:
+      - nexusflow-api
+    networks:
+      - nexusflow-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexusflow-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: nexusflow
+      POSTGRES_PASSWORD: nexusflow123
+      POSTGRES_DB: nexusflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nexusflow-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexusflow -d nexusflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - local-dbs
+
+  # Neo4j Graph Database (Community Edition for local development)
+  neo4j:
+    image: neo4j:5-community
+    container_name: nexusflow-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/nexusflow123
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - nexusflow-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - local-dbs
+
+  # Milvus Dependencies (for local development)
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    networks:
+      - nexusflow-network
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - local-dbs
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - nexusflow-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - local-dbs
+
+  milvus-standalone:
+    image: milvusdb/milvus:v2.5.0
+    container_name: milvus-standalone
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio
+    networks:
+      - nexusflow-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - local-dbs
+
+  # Arize Phoenix Observability
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: nexusflow-phoenix
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    environment:
+      - PHOENIX_WORKING_DIR=/phoenix
+    volumes:
+      - phoenix_data:/phoenix
+    networks:
+      - nexusflow-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  etcd_data:
+  minio_data:
+  milvus_data:
+  phoenix_data:
+  nexusflow_data:
+
+networks:
+  nexusflow-network:
+    driver: bridge
+
