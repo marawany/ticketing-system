@@ -433,20 +433,31 @@ class Neo4jClient:
     # =========================================================================
 
     async def get_graph_statistics(self) -> dict[str, Any]:
-        """Get statistics about the classification graph."""
+        """Get statistics about the classification graph with accuracy."""
         async with self.session() as session:
+            # Count nodes by label and sum ticket_count from Level1 categories
             query = """
-            MATCH (l1:Level1Category)
-            WITH count(l1) AS level1_count
-            MATCH (l2:Level2Category)
-            WITH level1_count, count(l2) AS level2_count
-            MATCH (l3:Level3Category)
-            WITH level1_count, level2_count, count(l3) AS level3_count
-            MATCH (t:Ticket)
-            RETURN level1_count, level2_count, level3_count, count(t) AS ticket_count
+            OPTIONAL MATCH (l1:Level1Category)
+            WITH count(l1) AS level1_count, sum(coalesce(l1.ticket_count, 0)) AS total_from_l1
+            OPTIONAL MATCH (l2:Level2Category)
+            WITH level1_count, total_from_l1, count(l2) AS level2_count
+            OPTIONAL MATCH (l3:Level3Category)
+            WITH level1_count, level2_count, total_from_l1, count(l3) AS level3_count
+            OPTIONAL MATCH (t:Ticket)
+            WITH level1_count, level2_count, level3_count, total_from_l1, count(t) AS ticket_node_count
+            RETURN level1_count, level2_count, level3_count, 
+                   CASE WHEN ticket_node_count > 0 THEN ticket_node_count ELSE total_from_l1 END AS ticket_count
             """
             result = await session.run(query)
             record = await result.single()
+            
+            # Get average accuracy separately
+            acc_result = await session.run(
+                "MATCH (n) WHERE n:Level1Category OR n:Level2Category OR n:Level3Category "
+                "RETURN avg(coalesce(n.accuracy, 1.0)) AS avg_acc"
+            )
+            acc_record = await acc_result.single()
+            avg_accuracy = acc_record["avg_acc"] if acc_record and acc_record["avg_acc"] else 1.0
 
             if record:
                 return {
@@ -454,12 +465,14 @@ class Neo4jClient:
                     "level2_categories": record["level2_count"],
                     "level3_categories": record["level3_count"],
                     "total_tickets": record["ticket_count"],
+                    "avg_accuracy": avg_accuracy,
                 }
             return {
                 "level1_categories": 0,
                 "level2_categories": 0,
                 "level3_categories": 0,
                 "total_tickets": 0,
+                "avg_accuracy": 1.0,
             }
 
     async def record_classification(

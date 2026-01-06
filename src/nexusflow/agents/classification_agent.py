@@ -631,32 +631,49 @@ Provide your classification as JSON:"""
         state["current_step"] = "route_decision"
 
         ensemble = state["ensemble_result"]
+        calibrated_score = ensemble["calibrated_score"]
+        component_agreement = ensemble["component_agreement"]
+        
+        # Routing logic:
+        # - Auto-resolve: confidence >= threshold (0.7) AND agreement >= 0.6
+        # - HITL queue: confidence between hitl_threshold (0.5) and classification_threshold (0.7)
+        # - Escalation: confidence < hitl_threshold (0.5) OR agreement < 0.4
+        
+        needs_hitl = False
+        reasons = []
+        
+        # Check if auto-resolve conditions are NOT met
+        if calibrated_score < settings.classification_confidence_threshold:
+            needs_hitl = True
+            if calibrated_score < settings.hitl_threshold:
+                reasons.append(f"Very low confidence ({calibrated_score:.2f}) - escalation")
+            else:
+                reasons.append(f"Below auto-resolve threshold ({calibrated_score:.2f})")
+        
+        if component_agreement < 0.4:
+            needs_hitl = True
+            reasons.append(f"Low component agreement ({component_agreement:.2f})")
+        
+        if state["errors"]:
+            needs_hitl = True
+            reasons.append(f"Processing errors: {len(state['errors'])}")
 
-        if ensemble["needs_review"]:
+        if needs_hitl:
             state["requires_hitl"] = True
-
-            # Determine reason
-            reasons = []
-            if ensemble["calibrated_score"] < settings.hitl_threshold:
-                reasons.append(f"Low confidence ({ensemble['calibrated_score']:.2f})")
-            if ensemble["component_agreement"] < 0.4:
-                reasons.append(f"Low agreement ({ensemble['component_agreement']:.2f})")
-            if state["errors"]:
-                reasons.append(f"Processing errors: {len(state['errors'])}")
-
-            state["hitl_reason"] = "; ".join(reasons) if reasons else "Low confidence"
-
+            state["hitl_reason"] = "; ".join(reasons) if reasons else "Manual review required"
             logger.info(
                 "Routing to HITL",
                 ticket_id=state["ticket_id"],
+                confidence=calibrated_score,
                 reason=state["hitl_reason"],
             )
         else:
             state["requires_hitl"] = False
+            state["hitl_reason"] = None
             logger.info(
                 "Auto-resolved",
                 ticket_id=state["ticket_id"],
-                confidence=ensemble["calibrated_score"],
+                confidence=calibrated_score,
             )
 
         return state

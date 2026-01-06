@@ -36,18 +36,34 @@ export function ConfidenceChart() {
     )
   }
 
-  const total = data?.dashboard?.total_tickets_processed || 1000
-  const avgConfidence = data?.dashboard?.avg_confidence || 0.8
+  const total = data?.dashboard?.total_tickets_processed || 0
+  const avgConfidence = data?.dashboard?.avg_confidence || 0
+  const autoResolvedRate = data?.dashboard?.auto_resolved_rate || 0
   
-  // Generate distribution based on actual average
-  const confidenceData = [
-    { range: '0.9-1.0', count: Math.round(total * 0.35), color: '#10b981' },
-    { range: '0.8-0.9', count: Math.round(total * 0.28), color: '#22c55e' },
-    { range: '0.7-0.8', count: Math.round(total * 0.20), color: '#84cc16' },
-    { range: '0.6-0.7', count: Math.round(total * 0.10), color: '#eab308' },
-    { range: '0.5-0.6', count: Math.round(total * 0.05), color: '#f97316' },
-    { range: '0.0-0.5', count: Math.round(total * 0.02), color: '#ef4444' },
-  ]
+  // Use REAL histogram data from API, fallback to empty distribution
+  const rawHistogram = data?.confidence?.confidence_histogram || []
+  
+  // Build distribution from real API data
+  const colorMap: Record<string, string> = {
+    '0.9-1.0': '#10b981',
+    '0.8-0.9': '#22c55e', 
+    '0.7-0.8': '#84cc16',
+    '0.6-0.7': '#eab308',
+    '0.5-0.6': '#f97316',
+    '0.0-0.5': '#ef4444',
+  }
+  
+  const defaultRanges = ['0.9-1.0', '0.8-0.9', '0.7-0.8', '0.6-0.7', '0.5-0.6', '0.0-0.5']
+  
+  const confidenceData = defaultRanges.map(range => {
+    // Find matching data from API response
+    const apiData = rawHistogram.find((h: any) => h.range === range)
+    return {
+      range,
+      count: apiData?.count || 0,
+      color: colorMap[range],
+    }
+  })
 
   const totalCount = confidenceData.reduce((sum, d) => sum + d.count, 0)
 
@@ -63,7 +79,7 @@ export function ConfidenceChart() {
         </div>
         <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
           <p className="text-2xl font-bold text-purple-400">
-            {((data?.dashboard?.auto_resolved_rate || 0.85) * 100).toFixed(1)}%
+            {(autoResolvedRate * 100).toFixed(1)}%
           </p>
           <p className="text-xs text-white/50">Auto-Resolved</p>
         </div>
@@ -72,7 +88,7 @@ export function ConfidenceChart() {
       {/* Distribution bars */}
       <div className="space-y-3">
         {confidenceData.map((item, index) => {
-          const percentage = (item.count / totalCount) * 100
+          const percentage = totalCount > 0 ? (item.count / totalCount) * 100 : 0
           
           return (
             <motion.div
@@ -108,7 +124,7 @@ export function ConfidenceChart() {
             <span className="text-white/60">High confidence (≥0.7)</span>
           </div>
           <span className="text-white/40">
-            {((confidenceData.slice(0, 3).reduce((s, d) => s + d.count, 0) / totalCount) * 100).toFixed(1)}%
+            {totalCount > 0 ? ((confidenceData.slice(0, 3).reduce((s, d) => s + d.count, 0) / totalCount) * 100).toFixed(1) : '0.0'}%
           </span>
         </div>
         <div className="flex items-center justify-between text-xs mt-2">
@@ -117,7 +133,7 @@ export function ConfidenceChart() {
             <span className="text-white/60">HITL required (&lt;0.7)</span>
           </div>
           <span className="text-white/40">
-            {((confidenceData.slice(3).reduce((s, d) => s + d.count, 0) / totalCount) * 100).toFixed(1)}%
+            {totalCount > 0 ? ((confidenceData.slice(3).reduce((s, d) => s + d.count, 0) / totalCount) * 100).toFixed(1) : '0.0'}%
           </span>
         </div>
       </div>

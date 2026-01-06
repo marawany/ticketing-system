@@ -1,7 +1,7 @@
 # NexusFlow Makefile
 # ============================================================================
 
-.PHONY: help install dev setup run api mcp frontend all test lint clean docker-build docker-up docker-down
+.PHONY: help install dev setup run api mcp frontend all test lint clean docker-build docker-up docker-down serve stop
 
 # Default target
 help:
@@ -15,6 +15,8 @@ help:
 	@echo "  setup         Setup databases and generate synthetic data"
 	@echo ""
 	@echo "Run Services:"
+	@echo "  serve         Start all servers (backend + frontend) - RECOMMENDED"
+	@echo "  stop          Stop all running servers"
 	@echo "  api           Start FastAPI server (port 8000)"
 	@echo "  mcp           Start MCP server (port 8001)"
 	@echo "  frontend      Start Next.js frontend (port 3000)"
@@ -114,6 +116,71 @@ stop-all:
 	@echo "All services stopped"
 
 # ============================================================================
+# Main Serve Command - Starts Backend + Frontend
+# ============================================================================
+
+serve:
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║           TURING NEXUSFLOW - Starting All Servers                ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@mkdir -p logs
+	@echo ""
+	@echo "Stopping any existing servers..."
+	-@pkill -f "uvicorn nexusflow" 2>/dev/null || true
+	-@pkill -f "next dev" 2>/dev/null || true
+	-@pkill -f "next-router-worker" 2>/dev/null || true
+	@sleep 2
+	@echo ""
+	@echo "Starting Backend API (port 8000)..."
+	@. .venv/bin/activate && nohup uvicorn nexusflow.api.main:app --host 0.0.0.0 --port 8000 > logs/api.log 2>&1 &
+	@sleep 3
+	@echo "Starting Frontend (port 3000)..."
+	@cd frontend && nohup npm run dev > ../logs/frontend.log 2>&1 &
+	@sleep 5
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║                    All Servers Running!                          ║"
+	@echo "╠══════════════════════════════════════════════════════════════════╣"
+	@echo "║  Backend API:    http://localhost:8000                           ║"
+	@echo "║  API Docs:       http://localhost:8000/docs                      ║"
+	@echo "║  Frontend:       http://localhost:3000                           ║"
+	@echo "║  Graph Manager:  http://localhost:3000/graph                     ║"
+	@echo "╠══════════════════════════════════════════════════════════════════╣"
+	@echo "║  Logs: logs/api.log, logs/frontend.log                           ║"
+	@echo "║  Stop: make stop                                                 ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+
+stop:
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║           Stopping All NexusFlow Servers                         ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	-@pkill -f "uvicorn nexusflow" 2>/dev/null || true
+	-@pkill -f "next dev" 2>/dev/null || true
+	-@pkill -f "next-router-worker" 2>/dev/null || true
+	@echo "All servers stopped."
+
+# Serve with live logs (foreground mode)
+serve-dev:
+	@echo "Starting servers in development mode with live logs..."
+	@mkdir -p logs
+	@echo "Stopping any existing servers..."
+	-@pkill -f "uvicorn nexusflow" 2>/dev/null || true
+	-@pkill -f "next dev" 2>/dev/null || true
+	@sleep 2
+	@echo ""
+	@echo "Starting Backend API..."
+	@. .venv/bin/activate && uvicorn nexusflow.api.main:app --host 0.0.0.0 --port 8000 --reload &
+	@sleep 2
+	@echo "Starting Frontend..."
+	@cd frontend && npm run dev
+
+# Frontend only in background
+frontend-bg:
+	@echo "Starting Next.js frontend in background..."
+	@cd frontend && nohup npm run dev > ../logs/frontend.log 2>&1 &
+	@echo "Frontend started (logs: logs/frontend.log)"
+
+# ============================================================================
 # Testing
 # ============================================================================
 
@@ -193,6 +260,20 @@ clean:
 logs:
 	@mkdir -p logs
 	@echo "Logs directory ready"
+
+# ============================================================================
+# Azure Deployment
+# ============================================================================
+
+deploy-azure:
+	@echo "Deploying to Azure VM..."
+	@chmod +x scripts/deploy-azure.sh
+	@./scripts/deploy-azure.sh $(ARGS)
+
+deploy-quick:
+	@echo "Quick deploy to VM..."
+	@chmod +x scripts/quick-deploy.sh
+	@./scripts/quick-deploy.sh $(VM_IP) $(SSH_KEY)
 
 # Quick health check
 health:

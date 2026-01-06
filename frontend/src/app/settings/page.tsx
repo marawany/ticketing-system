@@ -18,7 +18,7 @@ import {
   Zap
 } from 'lucide-react'
 import { Sidebar } from '@/components/layout/Sidebar'
-import { healthApi } from '@/lib/api'
+import { healthApi, settingsApi, AllSettings } from '@/lib/api'
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general')
@@ -26,8 +26,10 @@ export default function SettingsPage() {
   const [readiness, setReadiness] = useState<any>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   
-  // Settings state
+  // Settings state - will be populated from API
   const [settings, setSettings] = useState({
     confidenceThreshold: 0.7,
     hitlThreshold: 0.5,
@@ -36,6 +38,29 @@ export default function SettingsPage() {
     enableAutoClassify: true,
     defaultModel: 'gpt-4o',
   })
+
+  // Load settings from API on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setIsLoading(true)
+        const apiSettings = await settingsApi.getAll()
+        setSettings({
+          confidenceThreshold: apiSettings.confidence_threshold,
+          hitlThreshold: apiSettings.hitl_threshold,
+          batchSize: apiSettings.batch_size,
+          enableNotifications: apiSettings.enable_notifications,
+          enableAutoClassify: apiSettings.enable_auto_classify,
+          defaultModel: apiSettings.default_model,
+        })
+      } catch (e) {
+        console.error('Failed to load settings:', e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadSettings()
+  }, [])
 
   useEffect(() => {
     const checkHealth = async () => {
@@ -57,11 +82,33 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setIsSaving(true)
-    // Simulate save
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setIsSaving(false)
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 3000)
+    setSaveError(null)
+    
+    try {
+      // Convert frontend settings to API format
+      const apiSettings: AllSettings = {
+        confidence_threshold: settings.confidenceThreshold,
+        hitl_threshold: settings.hitlThreshold,
+        batch_size: settings.batchSize,
+        enable_notifications: settings.enableNotifications,
+        enable_auto_classify: settings.enableAutoClassify,
+        default_model: settings.defaultModel,
+      }
+      
+      const response = await settingsApi.updateAll(apiSettings)
+      
+      if (response.success) {
+        setSaveSuccess(true)
+        setTimeout(() => setSaveSuccess(false), 3000)
+      } else {
+        setSaveError(response.message || 'Failed to save settings')
+      }
+    } catch (e: any) {
+      console.error('Failed to save settings:', e)
+      setSaveError(e.response?.data?.detail || 'Failed to save settings')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const tabs = [
@@ -89,28 +136,33 @@ export default function SettingsPage() {
               </div>
             </div>
             
-            <button 
-              onClick={handleSave}
-              disabled={isSaving}
-              className="btn-primary flex items-center gap-2"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving...
-                </>
-              ) : saveSuccess ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  Saved!
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  Save Changes
-                </>
+            <div className="flex items-center gap-4">
+              {saveError && (
+                <span className="text-red-400 text-sm">{saveError}</span>
               )}
-            </button>
+              <button 
+                onClick={handleSave}
+                disabled={isSaving || isLoading}
+                className="btn-primary flex items-center gap-2"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : saveSuccess ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Saved!
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </header>
 

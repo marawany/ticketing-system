@@ -282,3 +282,45 @@ async def broadcast_graph_learning(
         "timestamp": datetime.utcnow().isoformat(),
     })
 
+
+async def broadcast_query_event(
+    ticket_id: str,
+    query_type: str,
+    query_details: dict[str, Any],
+    results: dict[str, Any] | None = None,
+    duration_ms: int | None = None,
+):
+    """
+    Broadcast a live query event (graph traversal, vector search, LLM call).
+    
+    query_type can be:
+    - graph_query: Neo4j graph traversal
+    - vector_search: Milvus similarity search
+    - llm_call: OpenAI/Anthropic LLM invocation
+    - confidence_calc: Confidence score computation
+    """
+    await manager.broadcast("classification", {
+        "type": "query_event",
+        "ticket_id": ticket_id,
+        "query_type": query_type,
+        "query_details": query_details,
+        "results": results,
+        "duration_ms": duration_ms,
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+
+
+async def broadcast_confidence_breakdown(
+    ticket_id: str,
+    components: dict[str, Any],
+    explanation: str,
+):
+    """Broadcast detailed confidence score breakdown."""
+    await manager.broadcast("classification", {
+        "type": "confidence_breakdown",
+        "ticket_id": ticket_id,
+        "components": components,
+        "explanation": explanation,
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+

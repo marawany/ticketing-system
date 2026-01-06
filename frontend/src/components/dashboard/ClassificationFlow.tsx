@@ -1,7 +1,9 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, Brain, Database, GitBranch, Search, Sparkles } from 'lucide-react'
+import { analyticsApi } from '@/lib/api'
 
 const flowSteps = [
   {
@@ -42,6 +44,36 @@ const flowSteps = [
 ]
 
 export function ClassificationFlow() {
+  const [stats, setStats] = useState<any>(null)
+  const [confidence, setConfidence] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [dashboardRes, confRes] = await Promise.all([
+          analyticsApi.getDashboard(),
+          analyticsApi.getConfidenceMetrics(),
+        ])
+        setStats(dashboardRes)
+        setConfidence(confRes)
+      } catch (e) {
+        console.error('Failed to fetch flow data')
+      }
+    }
+    fetchData()
+    const interval = setInterval(fetchData, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Calculate progress based on real auto-resolved rate
+  const progressWidth = stats?.auto_resolved_rate ? `${stats.auto_resolved_rate * 100}%` : '0%'
+  const avgTime = stats?.avg_processing_time_ms || 0
+  
+  // Get real confidence scores
+  const graphConf = confidence?.avg_graph_confidence || stats?.avg_confidence || 0
+  const vectorConf = confidence?.avg_vector_confidence || stats?.avg_confidence || 0
+  const llmConf = confidence?.avg_llm_confidence || stats?.avg_confidence || 0
+
   return (
     <div className="relative">
       {/* Flow visualization */}
@@ -73,53 +105,43 @@ export function ClassificationFlow() {
         ))}
       </div>
       
-      {/* Animated data flow line */}
-      <motion.div
+      {/* Static data flow line */}
+      <div
         className="absolute top-7 left-7 right-7 h-0.5 bg-gradient-to-r from-nexus-500/50 via-purple-500/50 to-green-500/50 -z-10"
-        initial={{ scaleX: 0 }}
-        animate={{ scaleX: 1 }}
-        transition={{ duration: 1, delay: 0.5 }}
-        style={{ transformOrigin: 'left' }}
       />
       
-      {/* Live processing indicator */}
-      <motion.div
-        className="mt-8 p-4 rounded-lg bg-gradient-to-r from-nexus-500/10 to-purple-500/10 border border-nexus-500/20"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1 }}
-      >
+      {/* Processing indicator - NO ANIMATION */}
+      <div className="mt-8 p-4 rounded-lg bg-gradient-to-r from-nexus-500/10 to-purple-500/10 border border-nexus-500/20">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="pulse-dot" />
             <span className="text-sm text-white/70">Processing</span>
           </div>
           <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-            <motion.div
-              className="h-full bg-nexus-gradient rounded-full"
-              initial={{ width: '0%' }}
-              animate={{ width: '75%' }}
-              transition={{ duration: 2, repeat: Infinity, repeatType: 'reverse' }}
+            {/* Static bar - no animation, shows real auto-resolve rate */}
+            <div
+              className="h-full bg-nexus-gradient rounded-full transition-all duration-500"
+              style={{ width: progressWidth }}
             />
           </div>
-          <span className="text-sm text-white/50">~234ms avg</span>
+          <span className="text-sm text-white/50">~{avgTime}ms avg</span>
         </div>
         
         <div className="grid grid-cols-3 gap-4 mt-4">
           <div className="text-center">
-            <p className="text-2xl font-bold text-purple-400">0.89</p>
+            <p className="text-2xl font-bold text-purple-400">{graphConf.toFixed(2)}</p>
             <p className="text-xs text-white/40">Graph Confidence</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-blue-400">0.91</p>
+            <p className="text-2xl font-bold text-blue-400">{vectorConf.toFixed(2)}</p>
             <p className="text-xs text-white/40">Vector Confidence</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-orange-400">0.85</p>
+            <p className="text-2xl font-bold text-orange-400">{llmConf.toFixed(2)}</p>
             <p className="text-xs text-white/40">LLM Confidence</p>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }

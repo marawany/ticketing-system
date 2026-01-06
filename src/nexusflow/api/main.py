@@ -178,6 +178,15 @@ Turing NexusFlow is an AI-powered ticket classification and resolution system th
     app.include_router(hitl.router, prefix="/api/v1/hitl", tags=["Human-in-the-Loop"])
     app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
     app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
+    
+    # Graph management routes
+    from nexusflow.api.routes import graph
+    app.include_router(graph.router, prefix="/api/v1/graph", tags=["Graph Management"])
+    
+    # Settings routes
+    from nexusflow.api.routes import settings as settings_routes
+    app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["Settings"])
+    
     app.include_router(websocket_router, tags=["WebSocket"])
 
     return app

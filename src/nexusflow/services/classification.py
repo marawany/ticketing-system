@@ -14,8 +14,10 @@ import structlog
 from nexusflow.agents.classification_agent import ClassificationAgent, get_classification_agent
 from nexusflow.db.milvus_client import MilvusClient, get_milvus_client
 from nexusflow.db.neo4j_client import Neo4jClient, get_neo4j_client
+from nexusflow.db.repository import HITLTaskRepository, TicketRepository
 from nexusflow.models.ticket import TicketCreate
 from nexusflow.services.embeddings import EmbeddingService, get_embedding_service
+from nexusflow.config import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -92,6 +94,28 @@ class ClassificationService:
             ticket_id=ticket_id,
             classification=result["classification"],
         )
+        
+        # Create ticket in database
+        await self._persist_ticket(
+            ticket_id=ticket_id,
+            ticket=ticket,
+            classification=result["classification"],
+            routing=result["routing"],
+        )
+        
+        # Record metrics for analytics - REAL DATA
+        await self._record_metrics(
+            ticket_id=ticket_id,
+            result=result,
+        )
+        
+        # Create HITL task if confidence is below threshold
+        if result["routing"].get("requires_hitl") or result["routing"].get("needs_escalation"):
+            await self._create_hitl_task(
+                ticket_id=ticket_id,
+                ticket=ticket,
+                result=result,
+            )
 
         return result
 
@@ -210,6 +234,163 @@ class ClassificationService:
             )
         except Exception as e:
             logger.warning("Failed to update graph", ticket_id=ticket_id, error=str(e))
+    
+    async def _persist_ticket(
+        self,
+        ticket_id: str,
+        ticket: TicketCreate,
+        classification: dict[str, Any],
+        routing: dict[str, Any],
+    ):
+        """Persist ticket to PostgreSQL database."""
+        try:
+            status = "resolved" if routing.get("auto_resolved") else "pending"
+            
+            await TicketRepository.create(
+                ticket_id=ticket_id,
+                title=ticket.title,
+                description=ticket.description,
+                priority=ticket.priority.value,
+                source=ticket.source,
+                customer_id=ticket.customer_id,
+                metadata=ticket.metadata,
+            )
+            
+            # Update with classification
+            await TicketRepository.update(
+                ticket_id,
+                level1_category=classification["level1"],
+                level2_category=classification["level2"],
+                level3_category=classification["level3"],
+                confidence_score=classification.get("confidence", 0.5),
+                status=status,
+            )
+            
+        except Exception as e:
+            logger.warning("Failed to persist ticket", ticket_id=ticket_id, error=str(e))
+
+    async def _record_metrics(
+        self,
+        ticket_id: str,
+        result: dict[str, Any],
+    ):
+        """Record classification metrics for analytics - REAL DATA."""
+        try:
+            from nexusflow.db.repository import MetricsRepository
+            
+            classification = result["classification"]
+            confidence = result["confidence"]
+            routing = result["routing"]
+            processing = result.get("processing", {})
+            
+            # Extract confidence scores
+            if isinstance(confidence, dict):
+                graph_conf = float(confidence.get("graph_confidence", 0.5))
+                vector_conf = float(confidence.get("vector_confidence", 0.5))
+                llm_conf = float(confidence.get("llm_confidence", 0.5))
+                final_conf = float(confidence.get("calibrated_score", confidence.get("score", 0.5)))
+                agreement = float(confidence.get("component_agreement", 0.5))
+            else:
+                graph_conf = vector_conf = llm_conf = final_conf = float(confidence) if confidence else 0.5
+                agreement = 1.0
+            
+            # Get processing time
+            processing_time = processing.get("time_ms", 0)
+            if not processing_time and isinstance(processing, dict):
+                processing_time = processing.get("processing_time_ms", 0)
+            
+            # Determine auto-resolved status
+            auto_resolved = routing.get("auto_resolved", False)
+            requires_hitl = routing.get("requires_hitl", False)
+            
+            await MetricsRepository.record(
+                ticket_id=ticket_id,
+                level1=classification["level1"],
+                level2=classification["level2"],
+                level3=classification["level3"],
+                graph_confidence=graph_conf,
+                vector_confidence=vector_conf,
+                llm_confidence=llm_conf,
+                final_confidence=final_conf,
+                component_agreement=agreement,
+                auto_resolved=auto_resolved,
+                requires_hitl=requires_hitl,
+                processing_time_ms=processing_time,
+            )
+            
+            logger.debug(
+                "Metrics recorded",
+                ticket_id=ticket_id,
+                final_confidence=final_conf,
+                auto_resolved=auto_resolved,
+                processing_time_ms=processing_time,
+            )
+        except Exception as e:
+            logger.warning("Failed to record metrics", ticket_id=ticket_id, error=str(e))
+
+    async def _create_hitl_task(
+        self,
+        ticket_id: str,
+        ticket: TicketCreate,
+        result: dict[str, Any],
+    ):
+        """Create HITL task for low-confidence classification."""
+        try:
+            classification = result["classification"]
+            confidence = result["confidence"]
+            routing = result["routing"]
+            
+            # Extract numeric confidence score
+            if isinstance(confidence, dict):
+                conf_score = confidence.get("calibrated_score", confidence.get("score", 0.5))
+                # Build confidence details with only numeric values
+                confidence_details = {
+                    "calibrated_score": float(conf_score),
+                    "graph_confidence": float(confidence.get("graph_confidence", 0.5)),
+                    "vector_confidence": float(confidence.get("vector_confidence", 0.5)),
+                    "llm_confidence": float(confidence.get("llm_confidence", 0.5)),
+                    "component_agreement": float(confidence.get("component_agreement", 0.5)),
+                }
+            else:
+                conf_score = float(confidence) if confidence else 0.5
+                confidence_details = {"score": conf_score}
+            
+            # Determine routing reason
+            reasons = []
+            
+            if conf_score < settings.hitl_threshold:
+                reasons.append(f"Low confidence: {conf_score:.2f}")
+            elif conf_score < settings.classification_confidence_threshold:
+                reasons.append(f"Below auto-resolve threshold: {conf_score:.2f}")
+            
+            if routing.get("needs_escalation"):
+                reasons.append("Requires escalation")
+            
+            routing_reason = "; ".join(reasons) if reasons else "Manual review required"
+            
+            # Create the HITL task
+            await HITLTaskRepository.create(
+                ticket_id=ticket_id,
+                ticket_title=ticket.title,
+                ticket_description=ticket.description,
+                ai_level1=classification["level1"],
+                ai_level2=classification["level2"],
+                ai_level3=classification["level3"],
+                ai_confidence=conf_score,
+                routing_reason=routing_reason,
+                confidence_details=confidence_details,
+                ticket_source=ticket.source,
+            )
+            
+            logger.info(
+                "Created HITL task",
+                ticket_id=ticket_id,
+                confidence=conf_score,
+                reason=routing_reason,
+            )
+            
+        except Exception as e:
+            logger.warning("Failed to create HITL task", ticket_id=ticket_id, error=str(e))
 
     async def get_classification(self, ticket_id: str) -> dict[str, Any] | None:
         """Get classification result for a ticket."""

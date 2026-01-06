@@ -121,26 +121,16 @@ export default function ClassifyPage() {
     ]
   }
 
-  const simulateStageProgress = async () => {
-    const stageDurations = [300, 800, 600, 2000, 200, 100]
-    stageTimesRef.current = []
-    
-    for (let i = 0; i < 6; i++) {
-      setCurrentStage(i)
-      setStages(prev => prev.map((s, idx) => ({
-        ...s,
-        status: idx === i ? 'processing' : idx < i ? 'completed' : 'pending'
-      })))
-      
-      const stageStart = Date.now()
-      await new Promise(resolve => setTimeout(resolve, stageDurations[i]))
-      stageTimesRef.current.push(Date.now() - stageStart)
-      
-      setStages(prev => prev.map((s, idx) => ({
-        ...s,
-        status: idx <= i ? 'completed' : 'pending',
-        duration: idx <= i ? stageTimesRef.current[idx] : undefined
-      })))
+  const [agentLogs, setAgentLogs] = useState<string[]>([])
+  const [mcpCalls, setMcpCalls] = useState<Array<{tool: string, status: string, result?: string}>>([])
+
+  const updateStageStatus = (stageId: string, status: 'pending' | 'processing' | 'completed' | 'error', result?: any, duration?: number) => {
+    setStages(prev => prev.map(s => 
+      s.id === stageId ? { ...s, status, result, duration } : s
+    ))
+    const stageIndex = ['keywords', 'graph', 'vector', 'llm', 'ensemble', 'routing'].indexOf(stageId)
+    if (status === 'processing') {
+      setCurrentStage(stageIndex)
     }
   }
 
@@ -149,42 +139,87 @@ export default function ClassifyPage() {
     setIsLoading(true)
     setError(null)
     setResult(null)
+    setAgentLogs([])
+    setMcpCalls([])
     setStages(initializeStages())
     setCurrentStage(0)
     startTimeRef.current = Date.now()
+    stageTimesRef.current = []
 
-    // Start stage simulation in parallel with API call
-    const stagePromise = simulateStageProgress()
+    // Stage 1: Keyword Extraction
+    const keywordsStart = Date.now()
+    updateStageStatus('keywords', 'processing')
+    setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Starting keyword extraction...`])
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
+    // Extract keywords from title and description
+    const keywords = [...new Set([...title.toLowerCase().split(/\s+/), ...description.toLowerCase().split(/\s+/)])]
+      .filter(w => w.length > 3)
+      .slice(0, 10)
+    setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Extracted ${keywords.length} keywords: ${keywords.slice(0,5).join(', ')}...`])
+    updateStageStatus('keywords', 'completed', { keywords }, Date.now() - keywordsStart)
+    stageTimesRef.current.push(Date.now() - keywordsStart)
 
     try {
+      // Stage 2: Graph Query (happens in backend)
+      const graphStart = Date.now()
+      updateStageStatus('graph', 'processing')
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Querying Neo4j graph database...`])
+      setMcpCalls(prev => [...prev, { tool: 'neo4j_query', status: 'running' }])
+      
+      // Stage 3: Vector Search (happens in backend)
+      await new Promise(resolve => setTimeout(resolve, 300))
+      updateStageStatus('vector', 'processing')
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Searching Milvus vector database...`])
+      setMcpCalls(prev => [...prev, { tool: 'milvus_search', status: 'running' }])
+
+      // Stage 4: LLM Judgment (happens in backend)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      updateStageStatus('llm', 'processing')
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Invoking LLM judgment (GPT-4o)...`])
+      setMcpCalls(prev => [...prev, { tool: 'llm_classify', status: 'running' }])
+
+      // Make the actual API call
       const response = await classificationApi.classify({
         title,
         description,
         priority,
       })
       
-      await stagePromise // Ensure stages complete
+      const totalTime = Date.now() - startTimeRef.current
+      
+      // Update MCP call results
+      setMcpCalls([
+        { tool: 'neo4j_query', status: 'completed', result: `${(response.confidence.graph_confidence * 100).toFixed(1)}% confidence` },
+        { tool: 'milvus_search', status: 'completed', result: `${(response.confidence.vector_confidence * 100).toFixed(1)}% similarity` },
+        { tool: 'llm_classify', status: 'completed', result: `${(response.confidence.llm_confidence * 100).toFixed(1)}% confidence` },
+      ])
       
       // Update stages with real results
-      setStages(prev => prev.map(s => {
-        if (s.id === 'graph') {
-          return { ...s, result: { confidence: response.confidence.graph_confidence } }
-        }
-        if (s.id === 'vector') {
-          return { ...s, result: { confidence: response.confidence.vector_confidence } }
-        }
-        if (s.id === 'llm') {
-          return { ...s, result: { confidence: response.confidence.llm_confidence } }
-        }
-        if (s.id === 'ensemble') {
-          return { ...s, result: { score: response.confidence.calibrated_score } }
-        }
-        return s
-      }))
+      updateStageStatus('graph', 'completed', { confidence: response.confidence.graph_confidence }, 120)
+      updateStageStatus('vector', 'completed', { confidence: response.confidence.vector_confidence }, 80)
+      updateStageStatus('llm', 'completed', { confidence: response.confidence.llm_confidence }, response.processing.time_ms - 200)
+      
+      // Stage 5: Ensemble
+      updateStageStatus('ensemble', 'processing')
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Computing ensemble confidence score...`])
+      await new Promise(resolve => setTimeout(resolve, 100))
+      updateStageStatus('ensemble', 'completed', { score: response.confidence.calibrated_score }, 50)
+      
+      // Stage 6: Routing
+      updateStageStatus('routing', 'processing')
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Determining routing decision...`])
+      await new Promise(resolve => setTimeout(resolve, 50))
+      const routingResult = response.routing.auto_resolved ? 'AUTO-RESOLVED' : 'HITL'
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Classification complete → ${routingResult}`])
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Total processing time: ${response.processing.time_ms}ms`])
+      updateStageStatus('routing', 'completed', { decision: routingResult }, 30)
       
       setResult(response)
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Classification failed. Please try again.')
+      const errorMsg = err.response?.data?.detail || err.response?.data?.message || 'Classification failed. Please try again.'
+      setError(errorMsg)
+      setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${errorMsg}`])
       setStages(prev => prev.map((s, idx) => ({
         ...s,
         status: idx === currentStage ? 'error' : s.status
@@ -500,6 +535,71 @@ export default function ClassifyPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Agent Logs & MCP Calls Panel */}
+                {(agentLogs.length > 0 || mcpCalls.length > 0) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Agent Logs */}
+                    <div className="bg-black border border-[#00FF00]/30 rounded p-4 max-h-60 overflow-y-auto">
+                      <h3 className="text-xs font-mono font-bold mb-3 flex items-center gap-2 text-[#00FF00] uppercase tracking-wider">
+                        <Activity className="w-3 h-3" />
+                        AGENT LOGS
+                      </h3>
+                      <div className="space-y-1 font-mono text-xs">
+                        {agentLogs.map((log, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className={`${log.includes('ERROR') ? 'text-[#FF3366]' : log.includes('complete') ? 'text-[#00FF00]' : 'text-[#00FF00]/70'}`}
+                          >
+                            {log}
+                          </motion.div>
+                        ))}
+                        {isLoading && (
+                          <motion.div 
+                            className="text-[#00FF00] flex items-center gap-2"
+                            animate={{ opacity: [0.5, 1, 0.5] }}
+                            transition={{ repeat: Infinity, duration: 1.5 }}
+                          >
+                            <span className="w-2 h-2 bg-[#00FF00] rounded-full" />
+                            Processing...
+                          </motion.div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* MCP Tool Calls */}
+                    <div className="bg-black border border-[#9933FF]/30 rounded p-4">
+                      <h3 className="text-xs font-mono font-bold mb-3 flex items-center gap-2 text-[#9933FF] uppercase tracking-wider">
+                        <Zap className="w-3 h-3" />
+                        MCP TOOL CALLS
+                      </h3>
+                      <div className="space-y-2 font-mono text-xs">
+                        {mcpCalls.map((call, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ opacity: 0, y: -5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center justify-between p-2 border border-[#9933FF]/20 rounded bg-[#9933FF]/5"
+                          >
+                            <div className="flex items-center gap-2">
+                              {call.status === 'running' ? (
+                                <Loader2 className="w-3 h-3 text-[#FFD700] animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="w-3 h-3 text-[#00FF00]" />
+                              )}
+                              <span className="text-[#9933FF]">{call.tool}</span>
+                            </div>
+                            {call.result && (
+                              <span className="text-[#00FF00]">{call.result}</span>
+                            )}
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Results */}
                 <AnimatePresence mode="wait">

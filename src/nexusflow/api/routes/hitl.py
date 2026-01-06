@@ -295,7 +295,7 @@ async def submit_correction(
     # Update user stats
     await UserRepository.increment_reviews(str(current_user.id))
 
-    # Update the Neo4j graph with the correction
+    # Update the Neo4j graph with the correction and trigger AI evolution
     if not is_correct:
         try:
             neo4j = get_neo4j_client()
@@ -306,6 +306,28 @@ async def submit_correction(
                 level3=correction.corrected_level3,
                 was_corrected=True,
             )
+            
+            # Trigger AI-powered graph evolution in background
+            import asyncio
+            from nexusflow.services.graph_evolution import get_graph_evolution_service
+            
+            async def evolve_graph():
+                try:
+                    evolution_service = await get_graph_evolution_service()
+                    await evolution_service.evolve_from_correction(
+                        original_path=[db_task.ai_level1, db_task.ai_level2, db_task.ai_level3],
+                        corrected_path=[correction.corrected_level1, correction.corrected_level2, correction.corrected_level3],
+                        ticket_content=f"{db_task.ticket_title}\n{db_task.ticket_description}",
+                        user_notes=correction.correction_notes,
+                    )
+                except Exception as e:
+                    import structlog
+                    logger = structlog.get_logger(__name__)
+                    logger.warning("Graph evolution failed", error=str(e))
+            
+            # Run in background
+            asyncio.create_task(evolve_graph())
+            
         except Exception as e:
             # Log but don't fail the request
             import structlog
