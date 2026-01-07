@@ -517,6 +517,13 @@ class HITLCorrectionRepository:
             result = await session.execute(select(func.avg(HITLCorrectionDB.review_time_seconds)))
             return result.scalar() or 0.0
 
+    @staticmethod
+    async def count_corrections() -> int:
+        """Get total number of corrections."""
+        async with get_session() as session:
+            result = await session.execute(select(func.count(HITLCorrectionDB.id)))
+            return result.scalar() or 0
+
 
 # ============================================================================
 # Classification Metrics Repository

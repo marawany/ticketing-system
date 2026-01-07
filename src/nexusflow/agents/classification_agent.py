@@ -646,9 +646,9 @@ Provide your classification as JSON:"""
         if calibrated_score < settings.classification_confidence_threshold:
             needs_hitl = True
             if calibrated_score < settings.hitl_threshold:
-                reasons.append(f"Very low confidence ({calibrated_score:.2f}) - escalation")
+                reasons.append(f"Very low confidence ({calibrated_score*100:.1f}%) - needs escalation")
             else:
-                reasons.append(f"Below auto-resolve threshold ({calibrated_score:.2f})")
+                reasons.append(f"Confidence {calibrated_score*100:.1f}% < {settings.classification_confidence_threshold*100:.0f}% threshold")
         
         if component_agreement < 0.4:
             needs_hitl = True

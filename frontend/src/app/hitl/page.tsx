@@ -46,16 +46,25 @@ export default function HITLPage() {
   // Fetch tasks and stats
   const fetchData = async () => {
     try {
-      const [tasksRes, statsRes, hierRes] = await Promise.all([
+      // Fetch tasks and stats (required)
+      const [tasksRes, statsRes] = await Promise.all([
         hitlApi.getTasks({ status: filter === 'all' ? undefined : filter }),
         hitlApi.getStats(),
-        classificationApi.getHierarchy(),
       ])
-      setTasks(tasksRes.tasks)
+      setTasks(tasksRes.tasks || [])
       setStats(statsRes)
-      setHierarchy(hierRes.hierarchy)
+      
+      // Fetch hierarchy separately (optional - for correction dropdowns)
+      try {
+        const hierRes = await classificationApi.getHierarchy()
+        setHierarchy(hierRes.hierarchy)
+      } catch (hierError) {
+        console.warn('Failed to fetch hierarchy, corrections may be limited:', hierError)
+        // Set a basic hierarchy structure so the page still works
+        setHierarchy({})
+      }
     } catch (e) {
-      console.error('Failed to fetch HITL data')
+      console.error('Failed to fetch HITL data:', e)
     } finally {
       setIsLoading(false)
     }

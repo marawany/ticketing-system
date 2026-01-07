@@ -359,9 +359,9 @@ class ClassificationService:
             reasons = []
             
             if conf_score < settings.hitl_threshold:
-                reasons.append(f"Low confidence: {conf_score:.2f}")
+                reasons.append(f"Low confidence ({conf_score*100:.1f}%) - needs escalation")
             elif conf_score < settings.classification_confidence_threshold:
-                reasons.append(f"Below auto-resolve threshold: {conf_score:.2f}")
+                reasons.append(f"Confidence {conf_score*100:.1f}% < {settings.classification_confidence_threshold*100:.0f}% threshold")
             
             if routing.get("needs_escalation"):
                 reasons.append("Requires escalation")

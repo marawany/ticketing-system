@@ -58,7 +58,7 @@ class HierarchyResponse(BaseModel):
     """Response model for category hierarchy."""
 
     hierarchy: dict[str, Any]
-    statistics: dict[str, int]
+    statistics: dict[str, Any]  # Can include int and float values
 
 
 @router.post("/classify", response_model=ClassifyResponse)
