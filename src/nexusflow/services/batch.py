@@ -2,6 +2,7 @@
 Batch Processing Service
 
 Handles batch ticket processing with queue management and callbacks.
+Supports real-time streaming of processing events.
 """
 
 import asyncio
@@ -17,6 +18,9 @@ from nexusflow.models.ticket import TicketCreate
 from nexusflow.services.classification import ClassificationService
 
 logger = structlog.get_logger(__name__)
+
+# Global event subscribers for streaming
+_event_subscribers: dict[str, list[asyncio.Queue]] = {}
 
 
 class BatchStatus(str, Enum):
@@ -223,14 +227,68 @@ class BatchProcessor:
         )
 
         try:
+            # Emit start event
+            await emit_batch_event(job.batch_id, {
+                "type": "batch_started",
+                "batch_id": job.batch_id,
+                "total_tickets": len(job.tickets),
+                "timestamp": datetime.utcnow().isoformat(),
+                "worker_id": worker_id,
+            })
+            
             # Process with progress updates
             total = len(job.tickets)
             results = []
+            auto_resolved_count = 0
+            hitl_count = 0
 
             for i, ticket in enumerate(job.tickets):
+                ticket_start = datetime.utcnow()
+                
+                # Emit processing event
+                await emit_batch_event(job.batch_id, {
+                    "type": "ticket_processing",
+                    "batch_id": job.batch_id,
+                    "ticket_index": i + 1,
+                    "total": total,
+                    "title": ticket.title[:60],
+                    "timestamp": ticket_start.isoformat(),
+                })
+                
                 result = await self._classification_service.classify_ticket(ticket)
                 results.append(result)
                 job.progress = int((i + 1) / total * 100)
+                
+                # Track stats
+                is_auto = result["routing"]["auto_resolved"]
+                if is_auto:
+                    auto_resolved_count += 1
+                else:
+                    hitl_count += 1
+                
+                processing_ms = int((datetime.utcnow() - ticket_start).total_seconds() * 1000)
+                
+                # Emit completion event with details
+                await emit_batch_event(job.batch_id, {
+                    "type": "ticket_classified",
+                    "batch_id": job.batch_id,
+                    "ticket_index": i + 1,
+                    "total": total,
+                    "progress": job.progress,
+                    "title": ticket.title[:60],
+                    "classification": result["classification"],
+                    "confidence": {
+                        "graph": result["confidence"].get("graph_confidence", 0),
+                        "vector": result["confidence"].get("vector_confidence", 0),
+                        "llm": result["confidence"].get("llm_confidence", 0),
+                        "final": result["confidence"].get("calibrated_score", 0),
+                    },
+                    "routing": result["routing"],
+                    "processing_ms": processing_ms,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "auto_resolved_so_far": auto_resolved_count,
+                    "hitl_so_far": hitl_count,
+                })
 
             # Calculate summary
             auto_resolved = sum(1 for r in results if r["routing"]["auto_resolved"])
@@ -260,6 +318,17 @@ class BatchProcessor:
                 auto_resolved=auto_resolved,
                 requires_hitl=requires_hitl,
             )
+            
+            # Emit completion event
+            await emit_batch_event(job.batch_id, {
+                "type": "batch_completed",
+                "batch_id": job.batch_id,
+                "total_tickets": total,
+                "auto_resolved": auto_resolved,
+                "requires_hitl": requires_hitl,
+                "processing_time_ms": job.result["processing_time_ms"],
+                "timestamp": datetime.utcnow().isoformat(),
+            })
 
             # Trigger callback
             await self._trigger_callback(job)
@@ -314,6 +383,39 @@ class BatchProcessor:
                 await self._callback_handler(job)
             except Exception as e:
                 logger.error("Custom callback handler failed", error=str(e))
+
+
+# Streaming event functions
+def subscribe_to_batch(batch_id: str) -> asyncio.Queue:
+    """Subscribe to real-time events for a batch."""
+    if batch_id not in _event_subscribers:
+        _event_subscribers[batch_id] = []
+    queue = asyncio.Queue()
+    _event_subscribers[batch_id].append(queue)
+    return queue
+
+
+def unsubscribe_from_batch(batch_id: str, queue: asyncio.Queue):
+    """Unsubscribe from batch events."""
+    if batch_id in _event_subscribers:
+        try:
+            _event_subscribers[batch_id].remove(queue)
+            if not _event_subscribers[batch_id]:
+                del _event_subscribers[batch_id]
+        except ValueError:
+            pass
+
+
+async def emit_batch_event(batch_id: str, event: dict[str, Any]):
+    """Emit an event to all subscribers of a batch."""
+    if batch_id not in _event_subscribers:
+        return
+    
+    for queue in _event_subscribers[batch_id]:
+        try:
+            await queue.put(event)
+        except Exception:
+            pass
 
 
 # Singleton instance

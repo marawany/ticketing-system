@@ -1,16 +1,23 @@
 """
 Batch Processing Routes
 
-Endpoints for batch ticket processing.
+Endpoints for batch ticket processing with WebSocket streaming.
 """
 
+import asyncio
+import json
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from nexusflow.models.ticket import TicketCreate, TicketPriority
-from nexusflow.services.batch import BatchStatus, get_batch_processor
+from nexusflow.services.batch import (
+    BatchStatus, 
+    get_batch_processor, 
+    subscribe_to_batch, 
+    unsubscribe_from_batch
+)
 
 router = APIRouter()
 
@@ -211,3 +218,94 @@ async def retry_batch(batch_id: str):
     # Re-submit the batch
     # This would require storing the original tickets
     raise HTTPException(status_code=501, detail="Retry not yet implemented")
+
+
+@router.websocket("/stream/{batch_id}")
+async def stream_batch_events(websocket: WebSocket, batch_id: str):
+    """
+    WebSocket endpoint for real-time batch processing updates.
+    
+    Streams events as JSON:
+    - batch_started: Batch processing has begun
+    - ticket_processing: A ticket is being processed
+    - ticket_classified: A ticket has been classified (includes full details)
+    - batch_completed: Batch processing is complete
+    """
+    await websocket.accept()
+    
+    # Subscribe to batch events
+    event_queue = subscribe_to_batch(batch_id)
+    
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "batch_id": batch_id,
+            "message": "Connected to batch stream"
+        })
+        
+        # Stream events until batch completes or client disconnects
+        while True:
+            try:
+                # Wait for event with timeout
+                event = await asyncio.wait_for(event_queue.get(), timeout=30.0)
+                await websocket.send_json(event)
+                
+                # Stop streaming after batch completion
+                if event.get("type") in ("batch_completed", "batch_failed"):
+                    break
+                    
+            except asyncio.TimeoutError:
+                # Send heartbeat to keep connection alive
+                await websocket.send_json({"type": "heartbeat"})
+                
+    except WebSocketDisconnect:
+        pass
+    finally:
+        unsubscribe_from_batch(batch_id, event_queue)
+
+
+@router.post("/submit-and-stream")
+async def submit_batch_for_streaming(
+    request: BatchSubmitRequest,
+):
+    """
+    Submit a batch and return batch_id for WebSocket streaming.
+    
+    Use the returned batch_id to connect to /api/v1/batch/stream/{batch_id}
+    for real-time updates.
+    """
+    processor = get_batch_processor()
+
+    # Convert to TicketCreate objects
+    ticket_creates = []
+    for t in request.tickets:
+        try:
+            priority = TicketPriority(t.priority.lower())
+        except ValueError:
+            priority = TicketPriority.MEDIUM
+
+        ticket_creates.append(
+            TicketCreate(
+                title=t.title,
+                description=t.description,
+                priority=priority,
+                source=t.source,
+                customer_id=t.customer_id,
+                metadata=t.metadata or {},
+            )
+        )
+
+    batch_id = await processor.submit_batch(
+        tickets=ticket_creates,
+        batch_id=request.batch_id,
+        callback_url=request.callback_url,
+    )
+
+    return {
+        "batch_id": batch_id,
+        "ticket_count": len(request.tickets),
+        "status": "pending",
+        "stream_url": f"/api/v1/batch/stream/{batch_id}",
+        "message": "Connect to stream_url via WebSocket for real-time updates"
+    }
